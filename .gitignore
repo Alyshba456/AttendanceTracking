@@ -29,10 +29,6 @@ backend/.staffsync-db.json
 backend/.staffsync-db.json.tmp
 backend/.staffsync-db.json.lock
 
-# Duplicate / stray api folder — only the repo-root /api/ is deployable on Vercel.
-# (backend/api/ contains outdated copies with wrong relative import paths.)
-backend/api/
-
 # Logs
 npm-debug.log*
 yarn-debug.log*
