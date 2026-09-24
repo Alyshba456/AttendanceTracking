@@ -1,4 +1,13 @@
-const API_BASE = '/api';
+const ENV_API_BASE = (import.meta as any).env?.VITE_API_URL;
+const DEFAULT_BASE = '/api';
+
+function stripTrailing(url: string): string {
+  return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
+const API_BASE = ENV_API_BASE
+  ? stripTrailing(String(ENV_API_BASE))
+  : DEFAULT_BASE;
 
 function getToken(): string | null {
   return localStorage.getItem('ss_token');
@@ -21,9 +30,11 @@ async function request<T = any>(
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
+    const url = API_BASE + path;
+    const res = await fetch(url, {
       ...options,
       headers,
+      credentials: API_BASE.startsWith('http') ? 'include' : 'same-origin',
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {

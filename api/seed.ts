@@ -21,6 +21,13 @@ const defaultSettings = {
   overtimeBuffer: 30,
 };
 
+const AdminModel = Admin as any;
+const EmployeeModel = Employee as any;
+const LeaveModel = Leave as any;
+const FieldWorkModel = FieldWork as any;
+const AttendanceModel = Attendance as any;
+const CompanySettingsModel = CompanySettings as any;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) return;
 
@@ -37,11 +44,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const results: Record<string, string> = {};
 
-    // Reset/seed virtual admin (id=ADMIN) – always ensure at least one admin exists on first deploy.
-    const adminCount = await Admin.countDocuments();
+    const adminCount = await AdminModel.countDocuments();
     if (force || adminCount === 0) {
-      if (force) await Admin.deleteMany({});
-      await Admin.create({
+      if (force) await AdminModel.deleteMany({});
+      await AdminModel.create({
         id: 'ADMIN',
         name: 'Admin User',
         email: 'admin@company.com',
@@ -51,10 +57,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       results.admin = force ? 'Reset' : 'Seeded';
     } else results.admin = 'Already exists';
 
-    // Employees: on force reset, WIPE. On empty DB, leave blank (admin creates them manually).
-    const empCount = await Employee.countDocuments();
+    const empCount = await EmployeeModel.countDocuments();
     if (force) {
-      await Employee.deleteMany({});
+      await EmployeeModel.deleteMany({});
       results.employees = 'Reset (empty)';
     } else if (empCount === 0) {
       results.employees = 'Empty — add via Employees tab';
@@ -62,10 +67,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       results.employees = 'Already exists';
     }
 
-    // Leaves: force → wipe, empty → leave empty.
-    const leaveCount = await Leave.countDocuments();
+    const leaveCount = await LeaveModel.countDocuments();
     if (force) {
-      await Leave.deleteMany({});
+      await LeaveModel.deleteMany({});
       results.leaves = 'Reset (empty)';
     } else if (leaveCount === 0) {
       results.leaves = 'Empty';
@@ -73,10 +77,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       results.leaves = 'Already exists';
     }
 
-    // Field Work: force → wipe, empty → leave empty.
-    const fwCount = await FieldWork.countDocuments();
+    const fwCount = await FieldWorkModel.countDocuments();
     if (force) {
-      await FieldWork.deleteMany({});
+      await FieldWorkModel.deleteMany({});
       results.fieldwork = 'Reset (empty)';
     } else if (fwCount === 0) {
       results.fieldwork = 'Empty';
@@ -84,10 +87,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       results.fieldwork = 'Already exists';
     }
 
-    // Attendance: force → wipe, empty → leave empty.
-    const attCount = await Attendance.countDocuments();
+    const attCount = await AttendanceModel.countDocuments();
     if (force) {
-      await Attendance.deleteMany({});
+      await AttendanceModel.deleteMany({});
       results.attendance = 'Reset (empty)';
     } else if (attCount === 0) {
       results.attendance = 'Empty';
@@ -95,11 +97,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       results.attendance = 'Already exists';
     }
 
-    // Company settings: force → restore defaults, empty → seed default singleton.
-    const setCount = await CompanySettings.countDocuments();
+    const setCount = await CompanySettingsModel.countDocuments();
     if (force || setCount === 0) {
-      if (force) await CompanySettings.deleteMany({});
-      await CompanySettings.create(defaultSettings);
+      if (force) await CompanySettingsModel.deleteMany({});
+      await CompanySettingsModel.create(defaultSettings);
       results.settings = force ? 'Reset (defaults)' : 'Seeded (defaults)';
     } else results.settings = 'Already exists';
 
