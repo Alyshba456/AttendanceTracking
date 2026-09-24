@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": false,
+    "strict": false,
+    "noImplicitAny": false,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@backend/*": ["backend/*"]
+    }
+  },
+  "include": [
+    "api/**/*.ts",
+    "backend/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "frontend",
+    "**/*.dev.cjs"
+  ]
+}

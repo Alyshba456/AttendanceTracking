@@ -1,0 +1,10 @@
+{
+  "description": "Delivers a clean, minimal interface that simplifies user interaction, enhancing clarity and ease of use for efficient task completion.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

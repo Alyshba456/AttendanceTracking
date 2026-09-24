@@ -1,0 +1,99 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --color-primary: #2563EB;
+  --color-primary-fg: #ffffff;
+  --color-sidebar: #0F172A;
+  --color-sidebar-fg: #CBD5E1;
+  --color-sidebar-active: #1E3A8A;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #F1F5F9;
+  color: #0F172A;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Responsive base font sizes */
+html {
+  font-size: 16px;
+}
+@media (max-width: 640px) {
+  html {
+    font-size: 15px;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+/* Responsive table wrapper — allow horizontal scroll on small screens */
+.responsive-table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent layout break for long cards on mobile */
+@media (max-width: 640px) {
+  .card-grid-responsive {
+    grid-template-columns: 1fr !important;
+  }
+  .stat-grid-responsive {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 400px) {
+  .stat-grid-responsive {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Ensure modals/popovers work on small screens */
+@media (max-width: 480px) {
+  [class*="rounded-2xl"] {
+    max-width: 100%;
+  }
+}
+
+/* Accessibility: focus ring */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 2px solid #2563EB;
+  outline-offset: 1px;
+}
+
+/* Touch-friendly tap targets on mobile */
+@media (max-width: 768px) {
+  button, [role="button"] {
+    min-height: 36px;
+  }
+  input, select, textarea {
+    min-height: 40px;
+  }
+}
