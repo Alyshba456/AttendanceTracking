@@ -8,13 +8,6 @@ import { handleCors, sendJson, sendError } from '../../backend/utils/helpers';
 const DEFAULT_ADMIN_EMAIL = 'admin@company.com';
 const DEFAULT_ADMIN_PW = 'Admin@Sync0!';
 
-/**
- * Get or create the admin account.
- * - If MongoDB configured and reachable → uses Admin document from `admins` collection.
- * - If MongoDB is configured but currently unreachable (new Wi-Fi not whitelisted etc.) → falls
- *   back to an in-memory default admin so admins can still log in and diagnose the issue.
- * - If MONGODB_URI not set at all → default admin inmem fallback.
- */
 async function getAdminAccount(): Promise<{ id: string; email: string; name: string; role: string; password: string }> {
   const fallback = {
     id: 'ADMIN',
@@ -38,9 +31,15 @@ async function getAdminAccount(): Promise<{ id: string; email: string; name: str
     }
     return admin.toObject();
   } catch (_e) {
-    // Mongo unreachable: still allow admin login via well-known default so portal doesn't fully break during transient network/whitelist issues
     return fallback;
   }
+}
+
+function errSummary(e: unknown): string {
+  if (e instanceof Error) {
+    return e.message.replace(/mongodb\+srv:\/\/[^\s)]+/gi, '[REDACTED_MONGODB_URI]');
+  }
+  return String(e);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -65,9 +64,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (e) {
     dbAvailable = false;
     dbConnectErr = e instanceof Error ? e : new Error(String(e));
+    console.error('[login] DB unavailable —', errSummary(e));
   }
 
-  // Admin login branch (supports in-mem fallback when DB is down)
   if (emailLower === DEFAULT_ADMIN_EMAIL) {
     try {
       const adminDoc = await getAdminAccount();
@@ -90,32 +89,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             : undefined,
       });
     } catch (err) {
-      console.error('Admin login error:', err);
+      console.error('[login] Admin login catch:', err instanceof Error ? err.stack ?? err.message : String(err));
       return sendError(
         res,
         !dbAvailable && dbConnectErr
-          ? dbConnectErr.message
-          : 'Server error during login. Please try again.',
+          ? `Database temporarily unavailable: ${dbConnectErr.message}`
+          : 'Server error during login. Try again or check that MONGODB_URI + JWT_SECRET are set in Vercel environment variables.',
         500
       );
     }
   }
 
-  // Employee login — requires DB. If DB not available, return a clear user-facing message instead of generic Server error 500.
   if (!dbAvailable) {
-    return sendError(
-      res,
+    const msg =
       'StaffSync cannot reach the database right now, so employee logins are unavailable. ' +
-      'If you switched to a new Wi-Fi network, have your admin add your current public IP to the MongoDB Atlas IP Access List. ' +
-      (dbConnectErr ? `(Reason: ${dbConnectErr.message})` : ''),
-      503
-    );
+      'Have your Admin verify the MONGODB_URI environment variable in Vercel Project Settings and that MongoDB Atlas allows connections from 0.0.0.0/0. ' +
+      (dbConnectErr ? `(Reason: ${dbConnectErr.message})` : '');
+    console.error('[login] Employee login blocked by DB connection:', errSummary(dbConnectErr || 'unknown'));
+    return sendError(res, msg, 503);
   }
 
   try {
-    const emp = await Employee.findOne({ email: emailLower });
+    const emp = await Employee.findOne({ email: emailLower }).maxTimeMS(10000);
     if (!emp) {
-      return sendError(res, 'No account found with this email.');
+      return sendError(res, 'No account found with this email. Ask your Admin to create the employee first.');
     }
 
     if (emp.status === 'Inactive') {
@@ -128,7 +125,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const token = signToken({ empId: emp.id, role: emp.role, email: emp.email });
-
     return sendJson(res, {
       token,
       role: emp.role === 'Admin' ? 'admin' : 'employee',
@@ -137,14 +133,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       firstLogin: emp.firstLogin,
     });
   } catch (err) {
-    console.error('Employee login error:', err);
-    return sendError(
-      res,
-      dbConnectErr
-        ? dbConnectErr.message
-        : 'Server error during login. Please try again.',
-      500
-    );
+    const reason = errSummary(err);
+    const label = err instanceof Error ? (err.name || 'Error') : 'Error';
+    console.error(`[login] Employee login catch [${label}]:`, err instanceof Error ? err.stack ?? err.message : String(err));
+
+    let userMsg = `${label} during login. Check that MONGODB_URI + JWT_SECRET are set in Vercel Environment Variables, and Atlas allows 0.0.0.0/0 in Network Access. (${reason})`;
+    if (dbConnectErr) {
+      userMsg = `DB issue: ${dbConnectErr.message}. (${label}: ${reason})`;
+    }
+    return sendError(res, userMsg, 500);
   }
 }
-

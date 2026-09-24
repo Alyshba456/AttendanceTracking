@@ -20,26 +20,15 @@ if (!global.mongooseCache) {
   global.mongooseCache = cached;
 }
 
-/**
- * Try to connect to MongoDB.
- *
- * - Returns mongoose connection on success (cached after first success).
- * - If no MONGODB_URI configured, returns null (caller can use inmem fallback if applicable).
- * - If connect attempt fails, throws a friendly error.
- * - Failed attempts are cached for ~15s so every API call doesn't re-try a 30s Atlas timeout.
- */
 export async function connectDB(): Promise<typeof mongoose | null> {
   if (!MONGODB_URI) {
     return null;
   }
-  if (cached.conn) {
+  if (cached.conn && mongoose.connection.readyState === 1) {
     return cached.conn;
   }
 
   const now = Date.now();
-  // Brief failure backoff — don't hammer Atlas after a fresh failure, BUT:
-  // Always force at least ONE clean reconnect attempt every 2 minutes regardless.
-  // This ensures long-running dev servers auto-heal after overnight ISP IP rotations.
   const twoMinAgo = now - 120000;
   const withinBackoff = cached.lastError && now - cached.lastErrorTs < 15000;
   const forceCleanReconnect = cached.lastForcedReconnectTs <= twoMinAgo;
@@ -52,6 +41,11 @@ export async function connectDB(): Promise<typeof mongoose | null> {
   if (forceCleanReconnect) {
     cached.lastForcedReconnectTs = now;
     cached.promise = null;
+    try {
+      if (mongoose.connection.readyState !== 0) {
+        await mongoose.disconnect().catch(() => {});
+      }
+    } catch {}
   }
 
   if (!cached.promise) {
@@ -60,6 +54,7 @@ export async function connectDB(): Promise<typeof mongoose | null> {
       maxPoolSize: 10,
       serverSelectionTimeoutMS: 6000,
       connectTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
     };
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((m) => m);
   }
@@ -70,20 +65,46 @@ export async function connectDB(): Promise<typeof mongoose | null> {
     return cached.conn;
   } catch (e) {
     cached.promise = null;
-    cached.lastError = e;
-    cached.lastErrorTs = now;
+    cached.conn = null;
+    const rawMsg = e instanceof Error ? e.message.split('\n')[0] : String(e);
+    const code = e instanceof Error
+      ? ((e as any).code ?? (e as any).codeName ?? (e as any).errCode ?? null)
+      : null;
+    const errName = e instanceof Error ? e.name : 'Error';
+
+    let problemHint = '';
+    const low = (rawMsg + ' ' + errName + ' ' + String(code)).toLowerCase();
+
+    if (/ip access list|ip (address )?whitelist|whitelist|0\.0\.0\.0/i.test(low)) {
+      problemHint = 'Atlas IP whitelist issue. In MongoDB Atlas → Network Access → ADD IP ADDRESS → ALLOW ACCESS FROM ANYWHERE (0.0.0.0/0).';
+    } else if (/bad auth|authentication failed|auth failed|credential|password|could not find user/i.test(low)) {
+      problemHint = 'Atlas authentication failed. Verify the database user username + password inside MONGODB_URI match the Atlas database user exactly (not your Atlas login password).';
+    } else if (/getaddrinfo|enotfound|enoent|dns|could not be found|resolve/i.test(low)) {
+      problemHint = 'Could not resolve the Atlas hostname. Check the MONGODB_URI for typos, or confirm the cluster exists in your Atlas project.';
+    } else if (/connection timed out|serverselectiontimeouterror|server selection/i.test(low)) {
+      problemHint = 'Connection timed out (ServerSelection). Most often Atlas IP whitelist. Add 0.0.0.0/0 to Atlas Network Access. Also verify the cluster is not paused in Atlas.';
+    } else if (/tls|ssl|certificate|self signed|cert/i.test(low)) {
+      problemHint = 'TLS/SSL issue. Ensure you are connecting via mongodb+srv:// with TLS enabled (Atlas default), and that Vercel can reach outbound 27017/27018.';
+    } else if (/quota|exceeded|rate limit|too many connections|maxpoolsize/i.test(low)) {
+      problemHint = 'Atlas connection limit reached. On M0/M2/M5 free tiers, reduce concurrent lambdas or scale up the Atlas cluster.';
+    } else if (/ns not found|namespace not found|no such collection/i.test(low)) {
+      problemHint = 'Query referenced a nonexistent database/collection. Ensure your MONGODB_URI ends with /staffsync?retryWrites=true&w=majority.';
+    }
+
     const friendly = new Error(
       'Unable to connect to the StaffSync database right now. ' +
-      'If you are on a new Wi-Fi network, please ask your admin to add your current IP to the MongoDB Atlas IP Access List, ' +
-      'or verify that the MONGODB_URI in .env / Vercel environment variables is correct. ' +
-      `(Reason: ${e instanceof Error ? e.message.split('\n')[0] : String(e)})`
+      (problemHint ? problemHint + ' ' : '') +
+      `(${errName}${code ? ` · code=${code}` : ''}: ${rawMsg})`
     );
     (friendly as any).cause = e;
+    (friendly as any).originalName = errName;
+    (friendly as any).code = code;
+    cached.lastError = friendly;
+    cached.lastErrorTs = now;
     throw friendly;
   }
 }
 
-/** True when live Mongo is configured at environment level. (Doesn't mean reachable right now.) */
 export function isMongoConfigured(): boolean {
   return Boolean(MONGODB_URI);
 }
